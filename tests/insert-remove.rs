@@ -24,7 +24,7 @@ fn insert() {
         b_plus_tree.insert(key, data);
     }
 
-    assert_eq!(VOLUME, b_plus_tree.keys().len())
+    assert_eq!(VOLUME, b_plus_tree.keys().count())
 }
 
 #[test]
@@ -41,5 +41,5 @@ fn remove() {
         b_plus_tree.remove(&key);
     }
 
-    assert_eq!(0, b_plus_tree.keys().len())
+    assert_eq!(0, b_plus_tree.keys().count())
 }

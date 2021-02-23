@@ -1,35 +1,37 @@
 use crate::bplus_tree::*;
 use std::{fmt::Debug, mem::MaybeUninit, ptr::NonNull};
 
-#[derive(Debug)]
-pub(crate) enum RemoveBehavior<K: Debug, V: Debug> {
-    RaiseChild(NodeRef<marker::Owned, K, V, marker::LeafOrInternal>, Option<(usize, V)>),
+pub(crate) enum RemoveBehavior<K, V> {
+    RaiseChild(
+        NodeRef<marker::Owned, K, V, marker::LeafOrInternal>,
+        Option<(usize, V)>,
+    ),
     Success(Option<(usize, V)>),
 }
 
-impl<'a, K: Ord + Debug, V: Debug> BPlusTree<K, V> {
+impl<'a, K: Ord, V> BPlusTree<K, V> {
     pub fn remove(&mut self, key: &K) -> Option<V> {
         let (len, value) = self.root.remove(key)?;
         self.length -= 1;
         if len == 1 {
             self.root.raise_node();
         };
-        return Some(value);
+        Some(value)
     }
 }
 
-impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
+impl<'a, BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
     pub(crate) fn remove(&mut self, key: &K) -> Option<(usize, V)> {
         let remove_behavior = match self.force() {
             ForceResult::Leaf(mut node) => node.remove(key),
             ForceResult::Internal(mut node) => node.remove(key),
         };
         match remove_behavior {
-            RemoveBehavior::Success(ret) => return ret,
+            RemoveBehavior::Success(ret) =>  ret,
             RemoveBehavior::RaiseChild(node, ret) => {
                 self.node = node.node;
                 self.height = node.height;
-                return ret;
+                ret
             }
         }
     }
@@ -77,15 +79,15 @@ impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker:
     }
 }
 
-impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Internal> {
+impl<'a, BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::Internal> {
     pub(crate) fn remove(&mut self, key: &K) -> RemoveBehavior<K, V> {
         let internal = self.as_internal_mut();
-        return internal.remove(key);
+        internal.remove(key)
     }
 
     pub(crate) fn raise_node(&self) -> NodeRef<marker::Owned, K, V, marker::LeafOrInternal> {
         let internal = self.as_internal();
-        return unsafe { internal.children[0].assume_init_read() };
+         unsafe { internal.children[0].assume_init_read() }
     }
 
     pub(crate) fn devide(&mut self, node: &mut Self) -> bool {
@@ -130,7 +132,7 @@ impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker:
         supplied_node.length = (length_sum - (length_sum / 2)) as u16;
 
         // return Success
-        return true;
+        true
     }
 
     pub(crate) fn marge(&mut self, leaf: &mut Self) {
@@ -164,10 +166,10 @@ impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker:
     }
 }
 
-impl<'a,BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType,K, V, marker::Leaf> {
+impl<'a, BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::Leaf> {
     pub(crate) fn remove(&mut self, key: &K) -> RemoveBehavior<K, V> {
         let leaf = unsafe { self.node.ptr.as_mut() };
-        return leaf.remove(key);
+        leaf.remove(key)
     }
 
     pub(crate) fn marge(&mut self, leaf: &mut Self) {
@@ -223,7 +225,7 @@ impl<'a,BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType,K, V, marker::L
         supplied_node.length = (length_sum - (length_sum / 2)) as u16;
 
         // return Success
-        return true;
+        true
     }
 
     pub(crate) fn get_largest_key(&self) -> K {
@@ -231,12 +233,12 @@ impl<'a,BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType,K, V, marker::L
     }
 }
 
-impl<'a, K: Ord + Debug, V: Debug> InternalNode<K, V> {
+impl<'a, K: Ord, V> InternalNode<K, V> {
     pub(crate) fn remove(&mut self, key: &K) -> RemoveBehavior<K, V> {
         let (child_idx, child_length, val) = {
             let (child_idx, ret) = self.remove_aux(key);
 
-            if let None = ret {
+            if ret.is_none() {
                 return RemoveBehavior::Success(None);
             };
 
@@ -293,7 +295,7 @@ impl<'a, K: Ord + Debug, V: Debug> InternalNode<K, V> {
         // ノードが保持するどのkeyよりも大きいkeyとして取り扱う。
         let idx = self.length() - 1;
         let ret = unsafe { self.children[idx].assume_init_mut().remove(key) };
-        return (idx, ret);
+        (idx, ret)
     }
 
     pub(crate) fn get_largest_key(&self) -> K {
@@ -305,13 +307,13 @@ impl<'a, K: Ord + Debug, V: Debug> InternalNode<K, V> {
     }
 }
 
-impl<'a, K: Ord + Debug, V: Debug> LeafNode<K, V> {
+impl<'a, K: Ord, V> LeafNode<K, V> {
     pub(crate) fn remove(&mut self, key: &K) -> RemoveBehavior<K, V> {
         // keyが存在するか確認
         let idx = {
             let matching_key = |x: &MaybeUninit<K>| unsafe { x.assume_init_ref() == key };
             let idx = self.keys[0..self.length()].iter().position(matching_key);
-            if let None = idx {
+            if idx.is_none() {
                 return RemoveBehavior::Success(None);
             }
             idx.unwrap()

@@ -1,13 +1,13 @@
 use crate::bplus_tree::*;
 use std::{convert::TryFrom, fmt::Debug, marker::PhantomData, mem::MaybeUninit, ptr::NonNull};
 
-impl<K: Ord + Debug, V: Debug> BPlusTree<K, V> {
+impl<K: Ord, V> BPlusTree<K, V> {
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         let ret = self.insert_aux(key, value);
-        if let None = ret {
+        if ret.is_none() {
             self.length += 1;
         };
-        return ret;
+         ret
     }
 
     fn insert_aux(&mut self, key: K, value: V) -> Option<V> {
@@ -31,11 +31,11 @@ impl<K: Ord + Debug, V: Debug> BPlusTree<K, V> {
             self.root.node = BoxedNode::from_internal(new_root);
             self.root.height += 1;
         }
-        return ret;
+         ret
     }
 }
 
-impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
+impl<'a, BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
     pub(crate) fn insert(
         &'a mut self,
         key: K,
@@ -45,7 +45,7 @@ impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker:
             ForceResult::Leaf(mut node) => {
                 let (insertbehavior, option, idx) =
                     unsafe { node.node.ptr.as_mut().insert(key, value) };
-                return (insertbehavior, option, idx);
+                (insertbehavior, option, idx)
             }
             ForceResult::Internal(mut node) => {
                 let length = node.as_internal().length();
@@ -81,31 +81,31 @@ impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker:
                     }
                 }
 
-                return (InsertBehavior::Fit, option, idx);
+                (InsertBehavior::Fit, option, idx)
             }
         }
     }
 }
 
-impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Internal> {
+impl<'a, BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::Internal> {
     pub(crate) fn insert(&mut self, key: K, value: V) -> (InsertBehavior<K, V>, Option<V>, usize) {
         let internal = self.as_internal_mut();
-        return internal.insert(key, value);
+        internal.insert(key, value)
     }
 }
 
-impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Leaf> {
+impl<'a, BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::Leaf> {
     pub(crate) unsafe fn insert(
         &mut self,
         key: K,
         value: V,
     ) -> (InsertBehavior<K, V>, Option<V>, usize) {
         let leaf = self.node.ptr.as_mut();
-        return leaf.insert(key, value);
+        leaf.insert(key, value)
     }
 }
 
-impl<'a, K: Ord + Debug, V: Debug> InternalNode<K, V> {
+impl<'a, K: Ord, V> InternalNode<K, V> {
     pub(crate) fn insert(
         &'a mut self,
         key: K,
@@ -127,11 +127,11 @@ impl<'a, K: Ord + Debug, V: Debug> InternalNode<K, V> {
         let idx = self.length() - 1;
         let (insert_behavior, option, _) =
             unsafe { self.children[idx].assume_init_mut().insert(key, value) };
-        return (insert_behavior, option, idx);
+        (insert_behavior, option, idx)
     }
 }
 
-impl<K: Ord + Debug, V: Debug> LeafNode<K, V> {
+impl<K: Ord, V> LeafNode<K, V> {
     pub(crate) fn insert(&mut self, key: K, value: V) -> (InsertBehavior<K, V>, Option<V>, usize) {
         if self.length() < CAPACITY {
             // 空きがある場合
@@ -145,7 +145,7 @@ impl<K: Ord + Debug, V: Debug> LeafNode<K, V> {
                 let mut swaped_val: MaybeUninit<V> = MaybeUninit::new(value);
                 std::mem::swap(&mut self.vals[idx], &mut swaped_val);
                 let ret: V = unsafe { swaped_val.assume_init() };
-                return (InsertBehavior::Fit, Some(ret), idx);
+                (InsertBehavior::Fit, Some(ret), idx)
             } else {
                 // 新規のkeyの場合、挿入位置を決定する。戻り値はNone。
                 for idx in 0..self.length() {
@@ -170,7 +170,7 @@ impl<K: Ord + Debug, V: Debug> LeafNode<K, V> {
                 self.vals[idx] = inserted_val;
                 self.length += 1;
 
-                return (InsertBehavior::Fit, None, idx);
+                (InsertBehavior::Fit, None, idx)
             }
         } else {
             //　空きがない場合
@@ -190,13 +190,13 @@ impl<K: Ord + Debug, V: Debug> LeafNode<K, V> {
 
             self.length = TryFrom::try_from(CAPACITY - B).unwrap();
 
-            unsafe {
+            let (_, option, _) = unsafe {
                 if key <= self.keys[self.length() - 1].assume_init_read() {
-                    self.insert(key, value);
+                    self.insert(key, value)
                 } else {
-                    new_leafnode.insert(key, value);
-                };
-            }
+                    new_leafnode.insert(key, value)
+                }
+            };
 
             let new_boxedleafnode = Box::new(new_leafnode);
 
@@ -210,7 +210,7 @@ impl<K: Ord + Debug, V: Debug> LeafNode<K, V> {
 
             unsafe {
                 let shaft_key = self.keys[self.length() - 1].assume_init_read();
-                return (InsertBehavior::Split(shaft_key, new_noderef), None, 0);
+                (InsertBehavior::Split(shaft_key, new_noderef), option, 0)
             }
         }
     }

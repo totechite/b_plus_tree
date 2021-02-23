@@ -4,10 +4,10 @@
 #![feature(maybe_uninit_slice)]
 
 mod bplus_tree;
-mod insert;
 mod get;
-mod remove;
+mod insert;
 mod map;
+mod remove;
 
 pub use bplus_tree::BPlusTree;
 

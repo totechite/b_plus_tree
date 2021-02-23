@@ -1,6 +1,12 @@
-use std::{convert::TryFrom, fmt::Debug, marker::PhantomData, mem::MaybeUninit, ptr::NonNull};
+use std::{
+    convert::TryFrom,
+    fmt::{Debug, Formatter, Result},
+    marker::PhantomData,
+    mem::MaybeUninit,
+    ptr::NonNull,
+};
 
-pub(crate) const B: usize = 3;
+pub(crate) const B: usize = 6;
 pub(crate) const MIN_LEN: usize = B - 1;
 pub(crate) const CAPACITY: usize = 2 * B - 1;
 pub(crate) const INTERNAL_CHILDREN_CAPACITY: usize = CAPACITY + 1;
@@ -10,8 +16,10 @@ pub(crate) mod marker {
 
     #[derive(Debug)]
     pub enum Leaf {}
+
     #[derive(Debug)]
     pub enum Internal {}
+
     #[derive(Debug)]
     pub enum LeafOrInternal {}
 
@@ -21,7 +29,7 @@ pub(crate) mod marker {
     #[derive(Debug)]
     pub enum Owned {}
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Ref<'a>(PhantomData<&'a ()>);
 }
 
@@ -31,22 +39,35 @@ pub enum ForceResult<Leaf, Internal> {
     Internal(Internal),
 }
 
-#[derive(Debug)]
-pub(crate) enum InsertBehavior<K: Debug, V: Debug> {
+pub(crate) enum InsertBehavior<K, V> {
     Split(K, NodeRef<marker::Owned, K, V, marker::LeafOrInternal>),
     Fit,
 }
 
-#[derive(Debug)]
-pub struct BPlusTree<K: Debug, V: Debug> {
+pub struct BPlusTree<K, V> {
     pub(crate) root: NodeRef<marker::Owned, K, V, marker::LeafOrInternal>,
     pub(crate) length: usize,
 }
 
-unsafe impl<K: Ord + Debug, V: Debug> Sync for BPlusTree<K, V> {}
-unsafe impl<K: Ord + Debug, V: Debug> Send for BPlusTree<K, V> {}
+unsafe impl<K: Ord, V> Sync for BPlusTree<K, V> {}
 
-impl<K: Debug, V: Debug> BPlusTree<K, V> {
+unsafe impl<K: Ord, V> Send for BPlusTree<K, V> {}
+
+impl<K: Ord + Debug, V: Debug> Debug for BPlusTree<K, V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if f.alternate() {
+            f.debug_struct("BPlusTree")
+                .field("length", &self.length)
+                .field("root", &self.root)
+                .finish()
+        } else {
+            let iter = self.iter();
+            f.debug_map().entries(iter).finish()
+        }
+    }
+}
+
+impl<K, V> BPlusTree<K, V> {
     pub fn new() -> Self {
         let leaf = BoxedNode::from_leaf(Box::new(LeafNode::new()));
         let root = NodeRef::<marker::Owned, K, V, marker::Leaf>::from_boxed_node(leaf).up_cast();
@@ -59,62 +80,150 @@ impl<K: Debug, V: Debug> BPlusTree<K, V> {
     pub fn len(&self) -> usize {
         self.length
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct BoxedNode<K: Debug, V: Debug> {
+#[derive(Clone)]
+pub(crate) struct BoxedNode<K, V> {
     pub(crate) ptr: NonNull<LeafNode<K, V>>,
 }
 
-#[derive(Debug)]
-pub(crate) struct BoxedKey<'a, K: Debug> {
-    content: &'a K,
+impl<K: Debug, V: Debug> Debug for BoxedNode<K, V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        f.debug_struct("BoxedNode").field("ptr", &self.ptr).finish()
+    }
 }
 
-#[derive(Debug)]
-pub(crate) struct NodeRef<BorrowType, K: Debug, V: Debug, NodeType> {
+pub(crate) struct NodeRef<BorrowType, K, V, NodeType> {
     pub(crate) height: u16,
     pub(crate) node: BoxedNode<K, V>,
     pub(crate) _metatype: PhantomData<(BorrowType, NodeType)>,
 }
 
-unsafe impl<BorrowType, K: Ord + Debug, V: Debug, Type> Sync for NodeRef<BorrowType, K, V, Type> {}
-unsafe impl<BorrowType, K: Ord + Debug, V: Debug, Type> Send for NodeRef<BorrowType, K, V, Type> {}
+unsafe impl<BorrowType, K, V, Type> Sync for NodeRef<BorrowType, K, V, Type> {}
 
-#[derive(Debug)]
-pub(crate) struct InternalNode<K: Debug, V: Debug> {
+unsafe impl<BorrowType, K, V, Type> Send for NodeRef<BorrowType, K, V, Type> {}
+
+impl<BorrowType, K: Debug, V: Debug> Debug for NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        unsafe {
+            let node_ref = &self.node.as_ptr();
+            if self.height == 0 {
+                f.debug_struct("LeafNode")
+                    .field("height", &self.height)
+                    .field("length", &node_ref.as_ref().length())
+                    .field("key-values", &node_ref.as_ref())
+                    .finish()
+            } else {
+                f.debug_struct("InternalNode")
+                    .field("height", &self.height)
+                    .field(
+                        "length",
+                        &node_ref.cast::<InternalNode<K, V>>().as_ref().length(),
+                    )
+                    .field("contents", &node_ref.cast::<InternalNode<K, V>>().as_ref())
+                    .finish()
+            }
+        }
+    }
+}
+
+impl<BorrowType, K: Debug, V: Debug> Debug for NodeRef<BorrowType, K, V, marker::Internal> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        unsafe {
+            let node = self.node.as_ptr().cast::<InternalNode<K, V>>();
+            let length = node.as_ref().length();
+            f.debug_struct("InternalNode")
+                .field("height", &self.height)
+                .field("length", &length)
+                .field("content", &node.as_ref())
+                .finish()
+        }
+    }
+}
+
+impl<BorrowType, K: Debug, V: Debug> Debug for NodeRef<BorrowType, K, V, marker::Leaf> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let node = &self.node.as_ptr();
+        unsafe {
+            let length = node.as_ref().length();
+            f.debug_struct("LeafNode")
+                .field("height", &self.height)
+                .field("length", &length)
+                .field("key-values", &node.as_ref())
+                .finish()
+        }
+    }
+}
+
+pub(crate) struct InternalNode<K, V> {
     pub(crate) keys: [MaybeUninit<K>; CAPACITY],
     pub(crate) length: u16,
     pub(crate) children: [MaybeUninit<NodeRef<marker::Owned, K, V, marker::LeafOrInternal>>;
         INTERNAL_CHILDREN_CAPACITY],
 }
-unsafe impl<'a, K: Ord + Debug, V: Debug> Sync for InternalNode<K, V> {}
-unsafe impl<'a, K: Ord + Debug, V: Debug> Send for InternalNode<K, V> {}
 
-#[derive(Debug)]
-pub(crate) struct LeafNode<K: Debug, V: Debug> {
+unsafe impl<'a, K, V> Sync for InternalNode<K, V> {}
+
+unsafe impl<'a, K, V> Send for InternalNode<K, V> {}
+
+impl<K: Debug, V: Debug> Debug for InternalNode<K, V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let keys = unsafe {
+            let nonnull_range = 0..self.length() - 1;
+            MaybeUninit::slice_assume_init_ref(&self.keys[nonnull_range])
+        };
+        let children = unsafe {
+            let nonnull_range = 0..self.length();
+            MaybeUninit::slice_assume_init_ref(&self.children[nonnull_range])
+        };
+
+        let mut debug_map = f.debug_map();
+
+        for idx in 0..self.length() - 1 {
+            debug_map.key(&"child").value(&children[idx]);
+            debug_map.key(&"key").value(&keys[idx]);
+        }
+        debug_map.key(&"child").value(&children[self.length() - 1]);
+
+        debug_map.finish()
+    }
+}
+
+pub(crate) struct LeafNode<K, V> {
     pub(crate) keys: [MaybeUninit<K>; CAPACITY],
     pub(crate) vals: [MaybeUninit<V>; CAPACITY],
     pub(crate) length: u16,
     pub(crate) prev_leaf: Option<NonNull<Self>>,
     pub(crate) next_leaf: Option<NonNull<Self>>,
 }
-unsafe impl<K: Ord + Debug, V: Debug> Sync for LeafNode<K, V> {}
-unsafe impl<K: Ord + Debug, V: Debug> Send for LeafNode<K, V> {}
 
-impl<K: Ord + Debug, V: Debug> BPlusTree<K, V> {
-    pub fn values(&self) -> Vec<V> {
-        let len = self.len();
-        self.root.traverse_values(len)
-    }
+unsafe impl<K: Ord, V> Sync for LeafNode<K, V> {}
 
-    pub fn keys(&self) -> Vec<K> {
-        let len = self.len();
-        self.root.traverse_keys(len)
+unsafe impl<K: Ord, V> Send for LeafNode<K, V> {}
+
+impl<K: Debug, V: Debug> Debug for LeafNode<K, V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let (keys, vals) = unsafe {
+            let nonnull_range = 0..self.length();
+            (
+                MaybeUninit::slice_assume_init_ref(&self.keys[nonnull_range.clone()]),
+                MaybeUninit::slice_assume_init_ref(&self.vals[nonnull_range]),
+            )
+        };
+
+        let mut debug_map = f.debug_map();
+        for idx in 0..self.length() {
+            debug_map.key(&keys[idx]).value(&vals[idx]);
+        }
+        debug_map.finish()
     }
 }
 
-impl<BorrowType, K: Debug, V: Debug> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
+impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
     pub(crate) fn force(
         &self,
     ) -> ForceResult<
@@ -140,7 +249,7 @@ impl<BorrowType, K: Debug, V: Debug> NodeRef<BorrowType, K, V, marker::LeafOrInt
     }
 }
 
-impl<BorrowType, K: Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Leaf> {
+impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Leaf> {
     pub(crate) fn from_boxed_node(boxednode: BoxedNode<K, V>) -> Self {
         Self {
             node: boxednode,
@@ -158,7 +267,7 @@ impl<BorrowType, K: Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Leaf> {
     }
 }
 
-impl<'a, BorrowType, K: Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Internal> {
+impl<'a, BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Internal> {
     pub(crate) fn from_boxed_node(boxednode: BoxedNode<K, V>) -> Self {
         Self {
             node: boxednode,
@@ -169,14 +278,23 @@ impl<'a, BorrowType, K: Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Inter
 
     pub(crate) fn as_internal(&self) -> &'a InternalNode<K, V> {
         unsafe {
-            &std::mem::transmute::<&LeafNode<K, V>, &InternalNode<K, V>>(&self.node.ptr.as_ref())
+            // Same Semantics code
+            //
+            // &std::mem::transmute::<&LeafNode<K, V>, &InternalNode<K, V>>(&self.node.ptr.as_ref())
+
+            &*(&self.node.ptr.as_ref() as *const &LeafNode<K, V> as *const InternalNode<K, V>)
         }
     }
     pub(crate) fn as_internal_mut(&mut self) -> &'a mut InternalNode<K, V> {
         unsafe {
-            std::mem::transmute::<&mut LeafNode<K, V>, &mut InternalNode<K, V>>(
-                &mut self.node.ptr.as_mut(),
-            )
+            // Same Semantics code
+            //
+            // std::mem::transmute::<&mut LeafNode<K, V>, &mut InternalNode<K, V>>(
+            //     &mut self.node.ptr.as_mut(),
+            // )
+
+            &mut *(&mut self.node.ptr.as_mut() as *mut &mut LeafNode<K, V>
+                as *mut InternalNode<K, V>)
         }
     }
     pub(crate) fn up_cast(self) -> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
@@ -188,7 +306,7 @@ impl<'a, BorrowType, K: Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Inter
     }
 }
 
-impl<K: Debug, V: Debug> BoxedNode<K, V> {
+impl<K, V> BoxedNode<K, V> {
     pub(crate) fn from_leaf(node: Box<LeafNode<K, V>>) -> Self {
         BoxedNode {
             ptr: NonNull::from(Box::leak(node)),
@@ -202,11 +320,11 @@ impl<K: Debug, V: Debug> BoxedNode<K, V> {
     }
 
     pub(crate) fn as_ptr(&self) -> NonNull<LeafNode<K, V>> {
-        NonNull::from(self.ptr)
+        self.ptr
     }
 }
 
-impl<'a, K: Debug, V: Debug> InternalNode<K, V> {
+impl<'a, K, V> InternalNode<K, V> {
     pub(crate) fn new() -> Self {
         InternalNode {
             keys: MaybeUninit::uninit_array(),
@@ -216,7 +334,7 @@ impl<'a, K: Debug, V: Debug> InternalNode<K, V> {
     }
 }
 
-impl<K: Debug, V: Debug> LeafNode<K, V> {
+impl<K, V> LeafNode<K, V> {
     pub(crate) fn new() -> Self {
         LeafNode {
             keys: MaybeUninit::uninit_array(),
@@ -228,56 +346,13 @@ impl<K: Debug, V: Debug> LeafNode<K, V> {
     }
 }
 
-impl<'a, BorrowType, K: Debug, V: Debug> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
-    fn traverse_values(&self, len: usize) -> Vec<V> {
-        match self.force() {
-            ForceResult::Leaf(node) => node.traverse_values(len),
-            ForceResult::Internal(node) => node.traverse_values(len),
-        }
-    }
-
-    fn traverse_keys(&self, len: usize) -> Vec<K> {
-        match self.force() {
-            ForceResult::Leaf(node) => node.traverse_keys(len),
-            ForceResult::Internal(node) => node.traverse_keys(len),
-        }
-    }
-}
-
-impl<'a, BorrowType, K: Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Leaf> {
-    fn traverse_values(&self, len: usize) -> Vec<V> {
-        let leaf = unsafe { self.node.ptr.as_ref() };
-        let mut buff = Vec::with_capacity(len);
-        unsafe {
-            leaf.traverse_values(&mut buff);
-            return buff;
-        };
-    }
-
-    fn traverse_keys(&self, len: usize) -> Vec<K> {
-        let leaf = unsafe { self.node.ptr.as_ref() };
-        let mut buff = Vec::with_capacity(len);
-        unsafe {
-            leaf.traverse_keys(&mut buff);
-            return buff;
-        };
-    }
-}
-
-impl<'a, BorrowType, K: Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Internal> {
+impl<'a, BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Internal> {
     pub(crate) fn cut_right(&mut self) -> (K, Box<InternalNode<K, V>>) {
         self.as_internal_mut().cut_right()
     }
 
     pub(crate) fn split(&mut self) -> (Box<InternalNode<K, V>>, K, Box<InternalNode<K, V>>) {
         self.as_internal_mut().split()
-    }
-
-    fn traverse_values(&self, len: usize) -> Vec<V> {
-        self.as_internal().traverse_values(len)
-    }
-    fn traverse_keys(&self, len: usize) -> Vec<K> {
-        self.as_internal().traverse_keys(len)
     }
 
     pub(crate) unsafe fn join_node(
@@ -301,7 +376,7 @@ impl<'a, BorrowType, K: Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Inter
     }
 }
 
-impl<'a, K: Debug, V: Debug> InternalNode<K, V> {
+impl<'a, K, V> InternalNode<K, V> {
     pub(crate) fn length(&'a self) -> usize {
         self.length as usize
     }
@@ -358,41 +433,11 @@ impl<'a, K: Debug, V: Debug> InternalNode<K, V> {
             Box::new(right_internal_node),
         )
     }
-
-    fn traverse_values(&self, len: usize) -> Vec<V> {
-        unsafe { self.children[0].assume_init_ref().traverse_values(len) }
-    }
-
-    fn traverse_keys(&self, len: usize) -> Vec<K> {
-        unsafe { self.children[0].assume_init_ref().traverse_keys(len) }
-    }
 }
 
-impl<K: Debug, V: Debug> LeafNode<K, V> {
+impl<K, V> LeafNode<K, V> {
     pub(crate) fn length(&self) -> usize {
         self.length as usize
-    }
-
-    unsafe fn traverse_values(&self, buff: &mut Vec<V>) {
-        let mut current_leaf_vals = self.vals[0..self.length()]
-            .iter()
-            .map(|x| x.assume_init_read())
-            .collect::<Vec<V>>();
-        buff.append(&mut current_leaf_vals);
-        if let Some(next) = self.next_leaf {
-            next.as_ref().traverse_values(buff);
-        }
-    }
-
-    unsafe fn traverse_keys(&self, buff: &mut Vec<K>) {
-        let mut current_leaf_keys = self.keys[0..self.length()]
-            .iter()
-            .map(|x| x.assume_init_read())
-            .collect::<Vec<K>>();
-        buff.append(&mut current_leaf_keys);
-        if let Some(next) = self.next_leaf {
-            next.as_ref().traverse_keys(buff);
-        }
     }
 
     pub(crate) fn split(&mut self) -> (Box<LeafNode<K, V>>, Box<LeafNode<K, V>>) {
