@@ -276,25 +276,19 @@ impl<'a, BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Internal> {
         }
     }
 
+    #[allow(clippy::transmute_ptr_to_ptr)] 
     pub(crate) fn as_internal(&self) -> &'a InternalNode<K, V> {
         unsafe {
-            // Same Semantics code
-            //
-            // &std::mem::transmute::<&LeafNode<K, V>, &InternalNode<K, V>>(&self.node.ptr.as_ref())
-
-            &*(&self.node.ptr.as_ref() as *const &LeafNode<K, V> as *const InternalNode<K, V>)
+            &std::mem::transmute::<&LeafNode<K, V>, &InternalNode<K, V>>(&self.node.ptr.as_ref())
         }
     }
-    pub(crate) fn as_internal_mut(&mut self) -> &'a mut InternalNode<K, V> {
-        unsafe {
-            // Same Semantics code
-            //
-            // std::mem::transmute::<&mut LeafNode<K, V>, &mut InternalNode<K, V>>(
-            //     &mut self.node.ptr.as_mut(),
-            // )
 
-            &mut *(&mut self.node.ptr.as_mut() as *mut &mut LeafNode<K, V>
-                as *mut InternalNode<K, V>)
+    #[allow(clippy::transmute_ptr_to_ptr)] 
+    pub(crate) fn as_internal_mut(&mut self) -> &'a mut InternalNode<K, V> {
+        unsafe {            
+            std::mem::transmute::<&mut LeafNode<K, V>, &mut InternalNode<K, V>>(
+                &mut self.node.ptr.as_mut(),
+            )
         }
     }
     pub(crate) fn up_cast(self) -> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
