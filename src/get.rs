@@ -1,12 +1,16 @@
 use crate::bplus_tree::*;
-use std::{fmt::Debug, mem::MaybeUninit};
+use std::borrow::Borrow;
 
-impl<'a, K: Ord + Debug, V: Debug> BPlusTree<K, V> {
-    pub fn get(&self, key: &'a K) -> Option<&'a V> {
-        let leaf = self.root.get_range(key);
+impl<'a, K: Ord, V> BPlusTreeMap<K, V> {
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        let leaf = self.root.get_leaf(key);
         unsafe {
             for idx in 0..leaf.length() {
-                if key == leaf.keys[idx].assume_init_ref() {
+                if key == leaf.keys[idx].assume_init_ref().borrow() {
                     return leaf.vals[idx].as_ptr().as_ref();
                 }
             }
@@ -15,51 +19,94 @@ impl<'a, K: Ord + Debug, V: Debug> BPlusTree<K, V> {
     }
 }
 
-impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
-    pub(crate) fn get(&self, key: &K) -> Option<V> {
-        match &self.force() {
-            ForceResult::Leaf(node) => node.get(key),
-            ForceResult::Internal(node) => node.get(key),
+impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
+    pub(crate) fn get_front_leaf(&self) -> Box<LeafNode<K, V>> {
+        match self.force() {
+            ForceResult::Internal(node) => node.get_front_leaf(),
+            ForceResult::Leaf(node) => node.get_ref_leaf(),
+        }
+    }
+
+    pub(crate) fn get_back_leaf(&self) -> Box<LeafNode<K, V>> {
+        match self.force() {
+            ForceResult::Internal(node) => node.get_back_leaf(),
+            ForceResult::Leaf(node) => node.get_ref_leaf(),
+        }
+    }
+
+    pub(crate) fn get_leaf<T>(&self, key: &T) -> Box<LeafNode<K, V>>
+    where
+        K: Borrow<T>,
+        T: Ord + ?Sized,
+    {
+        match self.force() {
+            ForceResult::Internal(node) => node.get_leaf(key),
+            ForceResult::Leaf(node) => node.get_leaf(key),
         }
     }
 }
 
-impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Internal> {
-    pub(crate) fn get(&self, key: &K) -> Option<V> {
+impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Internal> {
+    fn get_front_leaf(&self) -> Box<LeafNode<K, V>> {
         let internal = self.as_internal();
-         internal.get(key)
+        internal.get_front_leaf()
+    }
+
+    fn get_back_leaf(&self) -> Box<LeafNode<K, V>> {
+        let internal = self.as_internal();
+        internal.get_back_leaf()
+    }
+
+    fn get_leaf<T>(&self, key: &T) -> Box<LeafNode<K, V>>
+    where
+        K: Borrow<T>,
+        T: Ord + ?Sized,
+    {
+        let internal = self.as_internal();
+        internal.get_leaf(key)
     }
 }
 
-impl<'a, BorrowType, K: Ord + Debug, V: Debug> NodeRef<BorrowType, K, V, marker::Leaf> {
-    pub(crate) fn get(&self, key: &K) -> Option<V> {
-        let leaf = unsafe { self.node.ptr.as_ref() };
-         leaf.get(key)
+impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Leaf> {
+    fn get_ref_leaf(&self) -> Box<LeafNode<K, V>> {
+        unsafe { Box::from_raw(self.node.as_ptr().as_ptr()) }
+    }
+
+    fn get_leaf<T>(&self, _: &T) -> Box<LeafNode<K, V>>
+    where
+        K: Borrow<T>,
+        T: Ord + ?Sized,
+    {
+        unsafe { Box::from_raw(self.node.as_ptr().as_ptr()) }
     }
 }
 
-impl<'a, K: Ord + Debug, V: Debug> InternalNode<K, V> {
-    pub(crate) fn get(&self, key: &K) -> Option<V> {
+impl<'a, K: 'a, V: 'a> InternalNode<K, V> {
+    fn get_front_leaf(&self) -> Box<LeafNode<K, V>> {
+        let idx = 0;
+        let ret = unsafe { self.children[idx].assume_init_ref() }.get_front_leaf();
+        ret
+    }
+
+    fn get_back_leaf(&self) -> Box<LeafNode<K, V>> {
+        let idx = self.length();
+        let ret = unsafe { self.children[idx - 1].assume_init_ref() }.get_back_leaf();
+        ret
+    }
+
+    fn get_leaf<T>(&self, key: &T) -> Box<LeafNode<K, V>>
+    where
+        K: Borrow<T>,
+        T: Ord + ?Sized,
+    {
         for idx in 0..self.length() - 1 {
-            // 挿入位置を決定する。
-            let next = unsafe { self.keys[idx].assume_init_read() };
-            if key <= &next {
-                return unsafe { self.children[idx].assume_init_ref().get(key) };
+            let next = unsafe { self.keys[idx].assume_init_ref() };
+            if key <= next.borrow() {
+                return unsafe { self.children[idx].assume_init_ref().get_leaf(key) };
             }
         }
 
-        // ノードが保持するどのkeyよりも大きいkeyとして取り扱う。
         let idx = self.length() - 1;
-        unsafe { self.children[idx].assume_init_ref().get(key) }
-    }
-}
-
-impl<'a, K: Ord + Debug, V: Debug> LeafNode<K, V> {
-    pub(crate) fn get(&self, key: &K) -> Option<V> {
-        let idx = {
-            let matching_key = |x: &MaybeUninit<K>| unsafe { x.assume_init_ref() == key };
-            self.keys[0..self.length()].iter().position(matching_key)?
-        };
-        unsafe { Some(self.vals[idx].assume_init_read()) }
+        unsafe { self.children[idx].assume_init_ref().get_leaf(key) }
     }
 }

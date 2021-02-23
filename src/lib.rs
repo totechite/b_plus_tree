@@ -9,7 +9,8 @@ mod insert;
 mod map;
 mod remove;
 
-pub use bplus_tree::BPlusTree;
+pub use bplus_tree::BPlusTreeMap;
+pub use map::*;
 
 #[cfg(test)]
 mod tests {

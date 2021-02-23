@@ -1,12 +1,12 @@
 #![feature(is_sorted)]
 extern crate b_plus_tree;
 
-use b_plus_tree::BPlusTree;
+use b_plus_tree::BPlusTreeMap;
 use rand::Rng;
 const VOLUME: usize = 100000;
 
 fn main() {
-    let mut b_plus_tree = BPlusTree::new();
+    let mut b_plus_tree = BPlusTreeMap::new();
     let mut b_tree = std::collections::BTreeMap::new();
     let test_data = gen_test_items(); // Randamy Numeric List
 

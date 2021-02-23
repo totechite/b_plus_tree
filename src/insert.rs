@@ -1,13 +1,13 @@
 use crate::bplus_tree::*;
-use std::{convert::TryFrom, fmt::Debug, marker::PhantomData, mem::MaybeUninit, ptr::NonNull};
+use std::{convert::TryFrom, marker::PhantomData, mem::MaybeUninit, ptr::NonNull};
 
-impl<K: Ord, V> BPlusTree<K, V> {
+impl<K: Ord, V> BPlusTreeMap<K, V> {
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         let ret = self.insert_aux(key, value);
         if ret.is_none() {
             self.length += 1;
         };
-         ret
+        ret
     }
 
     fn insert_aux(&mut self, key: K, value: V) -> Option<V> {
@@ -31,7 +31,7 @@ impl<K: Ord, V> BPlusTree<K, V> {
             self.root.node = BoxedNode::from_internal(new_root);
             self.root.height += 1;
         }
-         ret
+        ret
     }
 }
 

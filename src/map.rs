@@ -11,17 +11,16 @@ use std::{
 
 fn make_noderef<'a, K, V>(box_leaf: Box<LeafNode<K, V>>) -> RefLeafNode<marker::Ref<'a>, K, V>
 where
-    K: Ord,
+    K: ,
     V: ,
 {
-     RefLeafNode::<marker::Ref<'a>, K, V> {
+    RefLeafNode::<marker::Ref<'a>, K, V> {
         node: NonNull::from(Box::leak(box_leaf)),
         _metatype: PhantomData,
     }
-    
 }
 
-impl<'a, K: Ord, V> BPlusTree<K, V> {
+impl<'a, K, V> BPlusTreeMap<K, V> {
     pub fn iter(&self) -> Iter<'_, K, V> {
         let (f, b) = {
             let (f, b) = self.full_range();
@@ -52,104 +51,12 @@ impl<'a, K: Ord, V> BPlusTree<K, V> {
     }
 }
 
-impl<'a, K: Ord, V> IntoIterator for &'a BPlusTree<K, V> {
+impl<'a, K: Ord, V> IntoIterator for &'a BPlusTreeMap<K, V> {
     type Item = (&'a K, &'a V);
     type IntoIter = Iter<'a, K, V>;
 
     fn into_iter(self) -> Iter<'a, K, V> {
         self.iter()
-    }
-}
-
-impl<BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
-    pub(crate) fn get_front_leaf(&self) -> Box<LeafNode<K, V>> {
-        match self.force() {
-            ForceResult::Internal(node) => node.get_front_leaf(),
-            ForceResult::Leaf(node) => node.get_ref_leaf(),
-        }
-    }
-
-    pub(crate) fn get_back_leaf(&self) -> Box<LeafNode<K, V>> {
-        match self.force() {
-            ForceResult::Internal(node) => node.get_back_leaf(),
-            ForceResult::Leaf(node) => node.get_ref_leaf(),
-        }
-    }
-
-    pub(crate) fn get_range<T>(&self, key: &T) -> Box<LeafNode<K, V>>
-    where
-        K: Borrow<T>,
-        T: Ord + ?Sized,
-    {
-        match self.force() {
-            ForceResult::Internal(node) => node.get_range(key),
-            ForceResult::Leaf(node) => node.get_range(key),
-        }
-    }
-}
-
-impl<BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::Internal> {
-    fn get_front_leaf(&self) -> Box<LeafNode<K, V>> {
-        let internal = self.as_internal();
-        internal.get_front_leaf()
-    }
-
-    fn get_back_leaf(&self) -> Box<LeafNode<K, V>> {
-        let internal = self.as_internal();
-        internal.get_back_leaf()
-    }
-
-    fn get_range<T>(&self, key: &T) -> Box<LeafNode<K, V>>
-    where
-        K: Borrow<T>,
-        T: Ord + ?Sized,
-    {
-        let internal = self.as_internal();
-        internal.get_range(key)
-    }
-}
-
-impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Leaf> {
-    fn get_ref_leaf(&self) -> Box<LeafNode<K, V>> {
-        unsafe { Box::from_raw(self.node.as_ptr().as_ptr()) }
-    }
-
-    fn get_range<T>(&self, _: &T) -> Box<LeafNode<K, V>>
-    where
-        K: Borrow<T>,
-        T: Ord + ?Sized,
-    {
-        unsafe { Box::from_raw(self.node.as_ptr().as_ptr()) }
-    }
-}
-
-impl<'a, K: 'a + Ord, V: 'a> InternalNode<K, V> {
-    fn get_front_leaf(&self) -> Box<LeafNode<K, V>> {
-        let idx = 0;
-        let ret = unsafe { self.children[idx].assume_init_ref() }.get_front_leaf();
-        ret
-    }
-
-    fn get_back_leaf(&self) -> Box<LeafNode<K, V>> {
-        let idx = self.length();
-        let ret = unsafe { self.children[idx - 1].assume_init_ref() }.get_back_leaf();
-        ret
-    }
-
-    fn get_range<T>(&self, key: &T) -> Box<LeafNode<K, V>>
-    where
-        K: Borrow<T>,
-        T: Ord + ?Sized,
-    {
-        for idx in 0..self.length() - 1 {
-            let next = unsafe { self.keys[idx].assume_init_ref() };
-            if key <= next.borrow() {
-                return unsafe { self.children[idx].assume_init_ref().get_range(key) };
-            }
-        }
-
-        let idx = self.length() - 1;
-        unsafe { self.children[idx].assume_init_ref().get_range(key) }
     }
 }
 
@@ -166,7 +73,7 @@ impl<K: Debug, V> Debug for Keys<'_, K, V> {
     }
 }
 
-impl<'a, K: Ord, V> BPlusTree<K, V> {
+impl<'a, K, V> BPlusTreeMap<K, V> {
     pub fn keys(&self) -> Keys<'_, K, V> {
         Keys { inner: self.iter() }
     }
@@ -185,7 +92,7 @@ impl<K, V: Debug> Debug for Values<'_, K, V> {
     }
 }
 
-impl<'a, K: Ord, V> BPlusTree<K, V> {
+impl<'a, K, V> BPlusTreeMap<K, V> {
     pub fn values(&self) -> Values<'_, K, V> {
         Values { inner: self.iter() }
     }
@@ -237,10 +144,8 @@ impl<'a, K: 'a, V: 'a> DoubleEndedIterator for Iter<'a, K, V> {
     }
 }
 
-/// struct Range
-///
-/// BPlusTreeの要素の範囲サブセット
-/// BPlusTree.range() -> Range
+/// BPlusTreeMapの要素の範囲サブセット
+/// BPlusTreeMap.range() -> Range
 ///
 /// front: keyが小さい側のLeafNodeのポインタ
 /// back: keyが大きい側のLeafNodeのポインタ
@@ -300,8 +205,7 @@ impl<'a, K, V> Range<'a, K, V> {
 
 impl<'a, K: 'a + Ord, V: 'a> FusedIterator for Range<'a, K, V> {}
 
-/// struct Handler
-///
+
 /// LeafNodeをIteratorとして制御する為の構造体
 ///
 /// cursor_position: LeafNode内部のkey-valueの現在位置を管理する
@@ -475,25 +379,25 @@ impl<'a, K: 'a + Ord, V: 'a> DoubleEndedIterator for Values<'a, K, V> {
 
 impl<'a, K: 'a + Ord, V: 'a> FusedIterator for Iter<'a, K, V> {}
 
-impl<K: Ord + Debug, V: Debug> BPlusTree<K, V> {
-    pub fn range<T, R>(&self, range: R) -> Range<'_, K, V>
+impl<K, V> BPlusTreeMap<K, V> {
+    pub fn range<T: ?Sized, R>(&self, range: R) -> Range<'_, K, V>
     where
-        K: Borrow<T>,
+        T: Ord,
+        K: Ord + Borrow<T>,
         R: RangeBounds<T>,
-        T: Ord + Debug + ?Sized,
     {
         let (front, start_key) = {
             match range.start_bound() {
-                Included(start) => (self.root.get_range(start), range.start_bound()),
+                Included(start) => (self.root.get_leaf(start), range.start_bound()),
                 Unbounded => (self.root.get_front_leaf(), range.start_bound()),
-                Excluded(start) => (self.root.get_range(start), range.start_bound()),
+                Excluded(start) => (self.root.get_leaf(start), range.start_bound()),
             }
         };
         let (mut back, end_key) = {
             match range.end_bound() {
-                Included(end) => (self.root.get_range(end), range.end_bound()),
+                Included(end) => (self.root.get_leaf(end), range.end_bound()),
                 Unbounded => (self.root.get_back_leaf(), range.end_bound()),
-                Excluded(end) => (self.root.get_range(end), range.end_bound()),
+                Excluded(end) => (self.root.get_leaf(end), range.end_bound()),
             }
         };
         let front_cursor_position = {

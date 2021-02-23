@@ -1,5 +1,5 @@
 use crate::bplus_tree::*;
-use std::{fmt::Debug, mem::MaybeUninit, ptr::NonNull};
+use std::mem::MaybeUninit;
 
 pub(crate) enum RemoveBehavior<K, V> {
     RaiseChild(
@@ -9,7 +9,7 @@ pub(crate) enum RemoveBehavior<K, V> {
     Success(Option<(usize, V)>),
 }
 
-impl<'a, K: Ord, V> BPlusTree<K, V> {
+impl<'a, K: Ord, V> BPlusTreeMap<K, V> {
     pub fn remove(&mut self, key: &K) -> Option<V> {
         let (len, value) = self.root.remove(key)?;
         self.length -= 1;
@@ -27,7 +27,7 @@ impl<'a, BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal
             ForceResult::Internal(mut node) => node.remove(key),
         };
         match remove_behavior {
-            RemoveBehavior::Success(ret) =>  ret,
+            RemoveBehavior::Success(ret) => ret,
             RemoveBehavior::RaiseChild(node, ret) => {
                 self.node = node.node;
                 self.height = node.height;
@@ -87,7 +87,7 @@ impl<'a, BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::Internal> {
 
     pub(crate) fn raise_node(&self) -> NodeRef<marker::Owned, K, V, marker::LeafOrInternal> {
         let internal = self.as_internal();
-         unsafe { internal.children[0].assume_init_read() }
+        unsafe { internal.children[0].assume_init_read() }
     }
 
     pub(crate) fn devide(&mut self, node: &mut Self) -> bool {

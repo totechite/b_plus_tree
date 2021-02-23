@@ -44,19 +44,19 @@ pub(crate) enum InsertBehavior<K, V> {
     Fit,
 }
 
-pub struct BPlusTree<K, V> {
+pub struct BPlusTreeMap<K, V> {
     pub(crate) root: NodeRef<marker::Owned, K, V, marker::LeafOrInternal>,
     pub(crate) length: usize,
 }
 
-unsafe impl<K: Ord, V> Sync for BPlusTree<K, V> {}
+unsafe impl<K: Ord, V> Sync for BPlusTreeMap<K, V> {}
 
-unsafe impl<K: Ord, V> Send for BPlusTree<K, V> {}
+unsafe impl<K: Ord, V> Send for BPlusTreeMap<K, V> {}
 
-impl<K: Ord + Debug, V: Debug> Debug for BPlusTree<K, V> {
+impl<K: Ord + Debug, V: Debug> Debug for BPlusTreeMap<K, V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if f.alternate() {
-            f.debug_struct("BPlusTree")
+            f.debug_struct("BPlusTreeMap")
                 .field("length", &self.length)
                 .field("root", &self.root)
                 .finish()
@@ -67,11 +67,11 @@ impl<K: Ord + Debug, V: Debug> Debug for BPlusTree<K, V> {
     }
 }
 
-impl<K, V> BPlusTree<K, V> {
+impl<K, V> BPlusTreeMap<K, V> {
     pub fn new() -> Self {
         let leaf = BoxedNode::from_leaf(Box::new(LeafNode::new()));
         let root = NodeRef::<marker::Owned, K, V, marker::Leaf>::from_boxed_node(leaf).up_cast();
-        BPlusTree {
+        BPlusTreeMap {
             root: root,
             length: 0,
         }
@@ -276,16 +276,16 @@ impl<'a, BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Internal> {
         }
     }
 
-    #[allow(clippy::transmute_ptr_to_ptr)] 
+    #[allow(clippy::transmute_ptr_to_ptr)]
     pub(crate) fn as_internal(&self) -> &'a InternalNode<K, V> {
         unsafe {
             &std::mem::transmute::<&LeafNode<K, V>, &InternalNode<K, V>>(&self.node.ptr.as_ref())
         }
     }
 
-    #[allow(clippy::transmute_ptr_to_ptr)] 
+    #[allow(clippy::transmute_ptr_to_ptr)]
     pub(crate) fn as_internal_mut(&mut self) -> &'a mut InternalNode<K, V> {
-        unsafe {            
+        unsafe {
             std::mem::transmute::<&mut LeafNode<K, V>, &mut InternalNode<K, V>>(
                 &mut self.node.ptr.as_mut(),
             )
@@ -373,10 +373,6 @@ impl<'a, BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Internal> {
 impl<'a, K, V> InternalNode<K, V> {
     pub(crate) fn length(&'a self) -> usize {
         self.length as usize
-    }
-
-    fn set_length(&'a mut self, len: u16) {
-        self.length = len;
     }
 
     pub(crate) fn cut_right(&'a mut self) -> (K, Box<InternalNode<K, V>>) {
