@@ -21,6 +21,7 @@ where
 }
 
 impl<'a, K, V> BPlusTreeMap<K, V> {
+
     pub fn iter(&self) -> Iter<'_, K, V> {
         let (f, b) = {
             let (f, b) = self.full_range();
@@ -45,8 +46,8 @@ impl<'a, K, V> BPlusTreeMap<K, V> {
     }
 
     fn full_range(&self) -> (Box<LeafNode<K, V>>, Box<LeafNode<K, V>>) {
-        let front = self.root.get_front_leaf();
-        let back = self.root.get_back_leaf();
+        let front = self.root.lock().expect("pass").get_front_leaf();
+        let back = self.root.lock().expect("pass").get_back_leaf();
         (front, back)
     }
 }
@@ -121,6 +122,7 @@ impl<K, V> Clone for Iter<'_, K, V> {
 impl<'a, K: 'a, V: 'a> Iterator for Iter<'a, K, V> {
     type Item = (&'a K, &'a V);
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         if self.length == 0 {
             None
@@ -133,6 +135,8 @@ impl<'a, K: 'a, V: 'a> Iterator for Iter<'a, K, V> {
 }
 
 impl<'a, K: 'a, V: 'a> DoubleEndedIterator for Iter<'a, K, V> {
+    
+    #[inline(always)]
     fn next_back(&mut self) -> Option<(&'a K, &'a V)> {
         if self.length == 0 {
             None
@@ -166,6 +170,7 @@ impl<K, V> Clone for Range<'_, K, V> {
 impl<'a, K: 'a, V: 'a> Iterator for Range<'a, K, V> {
     type Item = (&'a K, &'a V);
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         if self.is_empty() {
             None
@@ -176,6 +181,8 @@ impl<'a, K: 'a, V: 'a> Iterator for Range<'a, K, V> {
 }
 
 impl<'a, K: 'a, V: 'a> DoubleEndedIterator for Range<'a, K, V> {
+
+    #[inline(always)]
     fn next_back(&mut self) -> Option<(&'a K, &'a V)> {
         if self.is_empty() {
             None
@@ -262,6 +269,7 @@ impl<K, V> Eq for Handler<'_, K, V> {}
 impl<'a, K: 'a, V: 'a> Iterator for Handler<'a, K, V> {
     type Item = (&'a K, &'a V);
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         let node: &'a LeafNode<K, V> = unsafe { self.node.node.as_ptr().as_ref()? };
         let count = self.cursor_position();
@@ -289,6 +297,8 @@ impl<'a, K: 'a, V: 'a> Iterator for Handler<'a, K, V> {
 }
 
 impl<'a, K: 'a, V: 'a> DoubleEndedIterator for Handler<'a, K, V> {
+
+    #[inline(always)]
     fn next_back(&mut self) -> Option<(&'a K, &'a V)> {
         let node: &'a LeafNode<K, V> = unsafe { self.node.node.as_ptr().as_ref()? };
         let count = self.cursor_position();
@@ -348,6 +358,7 @@ impl<BorrowType, K, V> Clone for RefLeafNode<BorrowType, K, V> {
 impl<'a, K: 'a + Ord, V: 'a> Iterator for Keys<'a, K, V> {
     type Item = &'a K;
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         let key = self.inner.next()?.0;
         Some(key)
@@ -355,6 +366,8 @@ impl<'a, K: 'a + Ord, V: 'a> Iterator for Keys<'a, K, V> {
 }
 
 impl<'a, K: 'a + Ord, V: 'a> DoubleEndedIterator for Keys<'a, K, V> {
+
+    #[inline(always)]
     fn next_back(&mut self) -> Option<&'a K> {
         let key = self.inner.next_back()?.0;
         Some(key)
@@ -364,6 +377,7 @@ impl<'a, K: 'a + Ord, V: 'a> DoubleEndedIterator for Keys<'a, K, V> {
 impl<'a, K: 'a + Ord, V: 'a> Iterator for Values<'a, K, V> {
     type Item = &'a V;
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         let value = self.inner.next()?.1;
         Some(value)
@@ -371,6 +385,8 @@ impl<'a, K: 'a + Ord, V: 'a> Iterator for Values<'a, K, V> {
 }
 
 impl<'a, K: 'a + Ord, V: 'a> DoubleEndedIterator for Values<'a, K, V> {
+
+    #[inline(always)]
     fn next_back(&mut self) -> Option<&'a V> {
         let value = self.inner.next_back()?.1;
         Some(value)
@@ -388,16 +404,16 @@ impl<K, V> BPlusTreeMap<K, V> {
     {
         let (front, start_key) = {
             match range.start_bound() {
-                Included(start) => (self.root.get_leaf(start), range.start_bound()),
-                Unbounded => (self.root.get_front_leaf(), range.start_bound()),
-                Excluded(start) => (self.root.get_leaf(start), range.start_bound()),
+                Included(start) => (self.root.lock().expect("pass").get_leaf(start), range.start_bound()),
+                Unbounded => (self.root.lock().expect("pass").get_front_leaf(), range.start_bound()),
+                Excluded(start) => (self.root.lock().expect("pass").get_leaf(start), range.start_bound()),
             }
         };
         let (mut back, end_key) = {
             match range.end_bound() {
-                Included(end) => (self.root.get_leaf(end), range.end_bound()),
-                Unbounded => (self.root.get_back_leaf(), range.end_bound()),
-                Excluded(end) => (self.root.get_leaf(end), range.end_bound()),
+                Included(end) => (self.root.lock().expect("pass").get_leaf(end), range.end_bound()),
+                Unbounded => (self.root.lock().expect("pass").get_back_leaf(), range.end_bound()),
+                Excluded(end) => (self.root.lock().expect("pass").get_leaf(end), range.end_bound()),
             }
         };
         let front_cursor_position = {

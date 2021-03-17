@@ -4,9 +4,10 @@ use std::{
     marker::PhantomData,
     mem::MaybeUninit,
     ptr::NonNull,
+    sync::{Arc, Mutex},
 };
 
-pub(crate) const B: usize = 6;
+pub(crate) const B: usize = 12;
 pub(crate) const MIN_LEN: usize = B - 1;
 pub(crate) const CAPACITY: usize = 2 * B - 1;
 pub(crate) const INTERNAL_CHILDREN_CAPACITY: usize = CAPACITY + 1;
@@ -45,7 +46,7 @@ pub(crate) enum InsertBehavior<K, V> {
 }
 
 pub struct BPlusTreeMap<K, V> {
-    pub(crate) root: NodeRef<marker::Owned, K, V, marker::LeafOrInternal>,
+    pub(crate) root: Arc<Mutex<NodeRef<marker::Owned, K, V, marker::LeafOrInternal>>>,
     pub(crate) length: usize,
 }
 
@@ -72,7 +73,7 @@ impl<K, V> BPlusTreeMap<K, V> {
         let leaf = BoxedNode::from_leaf(Box::new(LeafNode::new()));
         let root = NodeRef::<marker::Owned, K, V, marker::Leaf>::from_boxed_node(leaf).up_cast();
         BPlusTreeMap {
-            root: root,
+            root: Arc::from(Mutex::new(root)),
             length: 0,
         }
     }
@@ -224,6 +225,8 @@ impl<K: Debug, V: Debug> Debug for LeafNode<K, V> {
 }
 
 impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
+    
+    #[inline(always)]
     pub(crate) fn force(
         &self,
     ) -> ForceResult<
@@ -276,14 +279,14 @@ impl<'a, BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Internal> {
         }
     }
 
-    #[allow(clippy::transmute_ptr_to_ptr)]
+    #[allow(clippy::transmute_ptr_to_ptr)] #[inline]
     pub(crate) fn as_internal(&self) -> &'a InternalNode<K, V> {
         unsafe {
             &std::mem::transmute::<&LeafNode<K, V>, &InternalNode<K, V>>(&self.node.ptr.as_ref())
         }
     }
 
-    #[allow(clippy::transmute_ptr_to_ptr)]
+    #[allow(clippy::transmute_ptr_to_ptr)] #[inline]
     pub(crate) fn as_internal_mut(&mut self) -> &'a mut InternalNode<K, V> {
         unsafe {
             std::mem::transmute::<&mut LeafNode<K, V>, &mut InternalNode<K, V>>(
@@ -435,8 +438,8 @@ impl<K, V> LeafNode<K, V> {
         let mut right_leafnode = LeafNode::new();
 
         for idx in 0..B {
-            std::mem::swap(&mut right_leafnode.keys[idx], &mut self.keys[B - 1 + idx]);
-            std::mem::swap(&mut right_leafnode.vals[idx], &mut self.vals[B - 1 + idx]);
+            std::mem::swap(&mut right_leafnode.keys[idx], &mut self.keys[B + idx]);
+            std::mem::swap(&mut right_leafnode.vals[idx], &mut self.vals[B + idx]);
         }
         right_leafnode.length = TryFrom::try_from(B).unwrap();
 

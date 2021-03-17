@@ -1,16 +1,16 @@
 use crate::bplus_tree::*;
 use std::borrow::Borrow;
 
-impl<'a, K: Ord, V> BPlusTreeMap<K, V> {
-    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+impl<K: Ord, V> BPlusTreeMap<K, V> {
+    pub fn get<Q>(&self, key: &K) -> Option<&V>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let leaf = self.root.get_leaf(key);
+        let leaf = self.root.lock().expect("pass").get_leaf(key.borrow());
         unsafe {
-            for idx in 0..leaf.length() {
-                if key == leaf.keys[idx].assume_init_ref().borrow() {
+            for idx in 0..(leaf.length()) {
+                if key == leaf.keys[idx].assume_init_ref() {
                     return leaf.vals[idx].as_ptr().as_ref();
                 }
             }
@@ -81,7 +81,7 @@ impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Leaf> {
     }
 }
 
-impl<'a, K: 'a, V: 'a> InternalNode<K, V> {
+impl<K, V> InternalNode<K, V> {
     fn get_front_leaf(&self) -> Box<LeafNode<K, V>> {
         let idx = 0;
         let ret = unsafe { self.children[idx].assume_init_ref() }.get_front_leaf();

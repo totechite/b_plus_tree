@@ -13,8 +13,8 @@ impl<K: Ord, V> BPlusTreeMap<K, V> {
     fn insert_aux(&mut self, key: K, value: V) -> Option<V> {
         let mut new_root = Box::new(InternalNode::<K, V>::new());
 
-        let root = self.root.force();
-        let (behavior, ret, _) = self.root.insert(key, value);
+        let root = self.root.lock().expect("pass").force();
+        let (behavior, ret, _) = self.root.lock().expect("pass").insert(key, value);
 
         if let InsertBehavior::Split(key, inserted_node) = behavior {
             let node = match root {
@@ -28,8 +28,8 @@ impl<K: Ord, V> BPlusTreeMap<K, V> {
             new_root.children[0] = MaybeUninit::new(left_child);
             new_root.children[1] = MaybeUninit::new(right_child);
             new_root.length = 2;
-            self.root.node = BoxedNode::from_internal(new_root);
-            self.root.height += 1;
+            self.root.lock().expect("pass").node = BoxedNode::from_internal(new_root);
+            self.root.lock().expect("pass").height += 1;
         }
         ret
     }
