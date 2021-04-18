@@ -2,6 +2,7 @@
 #![feature(maybe_uninit_extra)]
 #![feature(maybe_uninit_ref)]
 #![feature(maybe_uninit_slice)]
+#![feature(ptr_as_uninit)]
 
 mod bplus_tree;
 mod get;

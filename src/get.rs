@@ -1,25 +1,27 @@
 use crate::bplus_tree::*;
 use std::borrow::Borrow;
+use std::mem::MaybeUninit;
 
-impl<K: Ord, V> BPlusTreeMap<K, V> {
+impl<'a, K: Ord, V> BPlusTreeMap<K, V> {
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let leaf = self.root.lock().expect("pass").get_leaf(key.borrow());
-        unsafe {
-            for idx in 0..(leaf.length()) {
-                if key == leaf.keys[idx].assume_init_ref().borrow() {
-                    return leaf.vals[idx].as_ptr().as_ref();
-                }
-            }
+       // self.root.lock().expect("pass").get(key)
+       let leaf = self.root.lock().expect("pass").get_leaf(key.borrow());
+       unsafe {
+           for idx in 0..(leaf.length()) {
+               if key == leaf.keys[idx].assume_init_ref().borrow() {
+                   return leaf.vals[idx].as_ptr().as_ref();
+               }
+           }
         }
         None
     }
 }
 
-impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
+impl<'a, BorrowType, K, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
     pub(crate) fn get_front_leaf(&self) -> Box<LeafNode<K, V>> {
         match self.force() {
             ForceResult::Internal(node) => node.get_front_leaf(),
@@ -44,9 +46,10 @@ impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
             ForceResult::Leaf(node) => node.get_leaf(key),
         }
     }
+
 }
 
-impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Internal> {
+impl<'a, BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Internal> {
     fn get_front_leaf(&self) -> Box<LeafNode<K, V>> {
         let internal = self.as_internal();
         internal.get_front_leaf()
@@ -65,6 +68,7 @@ impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Internal> {
         let internal = self.as_internal();
         internal.get_leaf(key)
     }
+
 }
 
 impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Leaf> {
@@ -77,7 +81,16 @@ impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Leaf> {
         K: Borrow<T>,
         T: Ord + ?Sized,
     {
-        unsafe { Box::from_raw(self.node.as_ptr().as_ptr()) }
+        unsafe { Box::new(self.node.as_ptr().as_uninit_mut().assume_init_read()) }
+    }
+
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        let leaf = unsafe { self.node.ptr.as_ref() };
+        leaf.get(key)
     }
 }
 
@@ -108,5 +121,26 @@ impl<K, V> InternalNode<K, V> {
 
         let idx = self.length() - 1;
         unsafe { self.children[idx].assume_init_ref().get_leaf(key) }
+    }
+
+}
+
+impl<'a, K: Ord, V> LeafNode<K, V> {
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        // keyが存在するか確認
+        let matching_key = |x: &MaybeUninit<K>| unsafe { x.assume_init_ref().borrow() == key };
+        let idx = self.keys[0..self.length()].iter().position(matching_key);
+
+        if let Some(idx) = idx {
+            let ret = unsafe { self.vals[idx].assume_init_ref() };
+
+            Some(ret)
+        } else {
+            None
+        }
     }
 }
