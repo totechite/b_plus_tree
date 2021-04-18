@@ -14,11 +14,11 @@ impl<'a, K: Ord, V> BPlusTreeMap<K, V> {
 
 impl<'a, BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
     pub(crate) fn remove(&mut self, key: &K) -> Option<(usize, V)> {
-        let remove_behavior = match self.force() {
+       let remove_behavior = match self.force() {
             ForceResult::Leaf(mut node) => node.remove(key),
             ForceResult::Internal(mut node) => node.remove(key),
         };
-        remove_behavior
+        remove_behavior 
     }
 
     pub(crate) fn raise_node(&mut self) {

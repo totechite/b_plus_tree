@@ -84,14 +84,6 @@ impl<BorrowType, K, V> NodeRef<BorrowType, K, V, marker::Leaf> {
         unsafe { Box::new(self.node.as_ptr().as_uninit_mut().assume_init_read()) }
     }
 
-    pub fn get<Q>(&self, key: &Q) -> Option<&V>
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        let leaf = unsafe { self.node.ptr.as_ref() };
-        leaf.get(key)
-    }
 }
 
 impl<K, V> InternalNode<K, V> {
@@ -125,22 +117,3 @@ impl<K, V> InternalNode<K, V> {
 
 }
 
-impl<'a, K: Ord, V> LeafNode<K, V> {
-    pub fn get<Q>(&self, key: &Q) -> Option<&V>
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        // keyが存在するか確認
-        let matching_key = |x: &MaybeUninit<K>| unsafe { x.assume_init_ref().borrow() == key };
-        let idx = self.keys[0..self.length()].iter().position(matching_key);
-
-        if let Some(idx) = idx {
-            let ret = unsafe { self.vals[idx].assume_init_ref() };
-
-            Some(ret)
-        } else {
-            None
-        }
-    }
-}
