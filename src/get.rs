@@ -2,7 +2,7 @@ use crate::bplus_tree::*;
 use std::borrow::Borrow;
 
 impl<K: Ord, V> BPlusTreeMap<K, V> {
-    pub fn get<Q>(&self, key: &K) -> Option<&V>
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -10,7 +10,7 @@ impl<K: Ord, V> BPlusTreeMap<K, V> {
         let leaf = self.root.lock().expect("pass").get_leaf(key.borrow());
         unsafe {
             for idx in 0..(leaf.length()) {
-                if key == leaf.keys[idx].assume_init_ref() {
+                if key == leaf.keys[idx].assume_init_ref().borrow() {
                     return leaf.vals[idx].as_ptr().as_ref();
                 }
             }
