@@ -2,7 +2,6 @@ use crate::bplus_tree::*;
 use std::mem::MaybeUninit;
 
 impl<'a, K: Ord, V> BPlusTreeMap<K, V> {
-
     pub fn remove(&mut self, key: &K) -> Option<V> {
         let (len, value) = self.root.lock().expect("pass").remove(key)?;
         self.length -= 1;
@@ -14,13 +13,12 @@ impl<'a, K: Ord, V> BPlusTreeMap<K, V> {
 }
 
 impl<'a, BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal> {
-    
     pub(crate) fn remove(&mut self, key: &K) -> Option<(usize, V)> {
-        let remove_behavior = match self.force() {
+       let remove_behavior = match self.force() {
             ForceResult::Leaf(mut node) => node.remove(key),
             ForceResult::Internal(mut node) => node.remove(key),
         };
-        remove_behavior
+        remove_behavior 
     }
 
     pub(crate) fn raise_node(&mut self) {
@@ -68,7 +66,6 @@ impl<'a, BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::LeafOrInternal
 }
 
 impl<'a, BorrowType, K: Ord, V> NodeRef<BorrowType, K, V, marker::Internal> {
-
     pub(crate) fn remove(&mut self, key: &K) -> Option<(usize, V)> {
         let internal = self.as_internal_mut();
         internal.remove(key)
@@ -305,7 +302,7 @@ impl<'a, K: Ord, V> LeafNode<K, V> {
             // 削除処理
             self.keys[idx] = MaybeUninit::uninit();
             self.vals[idx] = MaybeUninit::uninit();
-            if idx < (self.length()-1) {
+            if idx < (self.length() - 1) {
                 for idx in idx..self.length() - 1 {
                     self.keys.swap(idx, idx + 1);
                     self.vals.swap(idx, idx + 1);
